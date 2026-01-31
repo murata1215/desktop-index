@@ -11,11 +11,67 @@
 # =============================================================================
 
 import logging
-from typing import List, Dict, Optional, Any
+from typing import List, Dict, Optional, Any, Union
 import meilisearch
 from meilisearch.errors import MeilisearchApiError
 
 logger = logging.getLogger(__name__)
+
+
+def _get_task_uid(task_info: Any) -> Optional[int]:
+    """
+    タスク情報から task_uid を取得するヘルパー関数
+
+    Meilisearch ライブラリのバージョンによって、タスク情報が
+    辞書または TaskInfo オブジェクトで返されるため、両方に対応する。
+
+    Args:
+        task_info: タスク情報（dict または TaskInfo オブジェクト）
+
+    Returns:
+        int: タスクUID、取得できない場合は None
+    """
+    # TaskInfo オブジェクト（新しいバージョン）の場合
+    if hasattr(task_info, 'task_uid'):
+        return task_info.task_uid
+    # 辞書（古いバージョン）の場合
+    if isinstance(task_info, dict):
+        return task_info.get("taskUid") or task_info.get("uid")
+    return None
+
+
+def _get_task_status(result: Any) -> str:
+    """
+    タスク結果からステータスを取得するヘルパー関数
+
+    Args:
+        result: タスク結果（dict または Task オブジェクト）
+
+    Returns:
+        str: タスクステータス
+    """
+    if hasattr(result, 'status'):
+        return result.status
+    if isinstance(result, dict):
+        return result.get("status", "unknown")
+    return "unknown"
+
+
+def _get_task_error(result: Any) -> Any:
+    """
+    タスク結果からエラー情報を取得するヘルパー関数
+
+    Args:
+        result: タスク結果（dict または Task オブジェクト）
+
+    Returns:
+        エラー情報
+    """
+    if hasattr(result, 'error'):
+        return result.error
+    if isinstance(result, dict):
+        return result.get("error", {})
+    return None
 
 
 class MeilisearchClient:
@@ -169,7 +225,7 @@ class MeilisearchClient:
         except Exception as e:
             logger.warning(f"インデックス設定の適用に失敗: {e}")
 
-    def _wait_for_task(self, task_info: Dict, timeout_ms: int = 120000) -> Dict:
+    def _wait_for_task(self, task_info: Any, timeout_ms: int = 120000) -> Any:
         """
         Meilisearch タスクの完了を待機する
 
@@ -177,16 +233,16 @@ class MeilisearchClient:
         タスクの完了を待機する必要があります。
 
         Args:
-            task_info: タスク情報（task_uid を含む辞書）
+            task_info: タスク情報（TaskInfo オブジェクトまたは辞書）
             timeout_ms: タイムアウト時間（ミリ秒）、デフォルト2分
 
         Returns:
-            dict: 完了したタスクの情報
+            完了したタスクの情報
 
         Raises:
             Exception: タスクが失敗した場合
         """
-        task_uid = task_info.get("taskUid") or task_info.get("uid")
+        task_uid = _get_task_uid(task_info)
         if task_uid is None:
             logger.warning(f"タスク情報にtaskUidがありません: {task_info}")
             return task_info
@@ -194,10 +250,10 @@ class MeilisearchClient:
         try:
             logger.debug(f"タスク待機中: taskUid={task_uid}")
             result = self.client.wait_for_task(task_uid, timeout_ms)
-            status = result.get("status", "unknown")
+            status = _get_task_status(result)
 
             if status == "failed":
-                error_info = result.get("error", {})
+                error_info = _get_task_error(result)
                 logger.error(f"タスク失敗: taskUid={task_uid}, error={error_info}")
             elif status == "succeeded":
                 logger.debug(f"タスク成功: taskUid={task_uid}")
@@ -240,17 +296,19 @@ class MeilisearchClient:
             try:
                 logger.info(f"Meilisearchにバッチ送信中: {len(batch)} 件...")
                 task = self.index.add_documents(batch)
-                logger.info(f"タスク作成: taskUid={task.get('taskUid')}")
+                task_uid = _get_task_uid(task)
+                logger.info(f"タスク作成: taskUid={task_uid}")
 
                 # タスク完了を待機
                 result = self._wait_for_task(task)
-                task_status = result.get("status", "unknown")
+                task_status = _get_task_status(result)
 
                 if task_status == "succeeded":
                     total_added += len(batch)
-                    logger.info(f"バッチ追加成功: {len(batch)} 件 (taskUid={task.get('taskUid')})")
+                    logger.info(f"バッチ追加成功: {len(batch)} 件 (taskUid={task_uid})")
                 else:
-                    logger.error(f"バッチ追加失敗: status={task_status}, error={result.get('error')}")
+                    error_info = _get_task_error(result)
+                    logger.error(f"バッチ追加失敗: status={task_status}, error={error_info}")
 
             except Exception as e:
                 logger.error(f"ドキュメント追加エラー: {e}", exc_info=True)
