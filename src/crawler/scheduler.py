@@ -343,10 +343,11 @@ class CrawlerScheduler:
             return
 
         try:
+            logger.info(f"インデックス登録開始: {len(documents)} 件")
             count = await self.meilisearch_client.add_documents(
                 documents,
                 batch_size=self.batch_size
             )
-            logger.debug(f"{count} 件のドキュメントをインデックスに登録しました")
+            logger.info(f"インデックス登録完了: {count} 件 / {len(documents)} 件が成功")
         except Exception as e:
-            logger.error(f"ドキュメント登録エラー: {e}")
+            logger.error(f"ドキュメント登録エラー: {e}", exc_info=True)

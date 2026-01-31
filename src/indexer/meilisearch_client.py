@@ -169,7 +169,7 @@ class MeilisearchClient:
         except Exception as e:
             logger.warning(f"インデックス設定の適用に失敗: {e}")
 
-    def _wait_for_task(self, task_info: Dict, timeout_ms: int = 60000) -> Dict:
+    def _wait_for_task(self, task_info: Dict, timeout_ms: int = 120000) -> Dict:
         """
         Meilisearch タスクの完了を待機する
 
@@ -178,7 +178,7 @@ class MeilisearchClient:
 
         Args:
             task_info: タスク情報（task_uid を含む辞書）
-            timeout_ms: タイムアウト時間（ミリ秒）
+            timeout_ms: タイムアウト時間（ミリ秒）、デフォルト2分
 
         Returns:
             dict: 完了したタスクの情報
@@ -188,16 +188,26 @@ class MeilisearchClient:
         """
         task_uid = task_info.get("taskUid") or task_info.get("uid")
         if task_uid is None:
+            logger.warning(f"タスク情報にtaskUidがありません: {task_info}")
             return task_info
 
         try:
+            logger.debug(f"タスク待機中: taskUid={task_uid}")
             result = self.client.wait_for_task(task_uid, timeout_ms)
-            if result.get("status") == "failed":
-                logger.error(f"タスク失敗: {result.get('error')}")
+            status = result.get("status", "unknown")
+
+            if status == "failed":
+                error_info = result.get("error", {})
+                logger.error(f"タスク失敗: taskUid={task_uid}, error={error_info}")
+            elif status == "succeeded":
+                logger.debug(f"タスク成功: taskUid={task_uid}")
+            else:
+                logger.warning(f"タスク状態: taskUid={task_uid}, status={status}")
+
             return result
         except Exception as e:
-            logger.warning(f"タスク待機エラー: {e}")
-            return task_info
+            logger.error(f"タスク待機エラー: taskUid={task_uid}, error={e}", exc_info=True)
+            return {"status": "error", "error": str(e)}
 
     async def add_documents(
         self,
@@ -228,15 +238,25 @@ class MeilisearchClient:
             batch = documents[i:i + batch_size]
 
             try:
+                logger.info(f"Meilisearchにバッチ送信中: {len(batch)} 件...")
                 task = self.index.add_documents(batch)
-                self._wait_for_task(task)
-                total_added += len(batch)
-                logger.debug(f"バッチ追加完了: {len(batch)} 件")
+                logger.info(f"タスク作成: taskUid={task.get('taskUid')}")
+
+                # タスク完了を待機
+                result = self._wait_for_task(task)
+                task_status = result.get("status", "unknown")
+
+                if task_status == "succeeded":
+                    total_added += len(batch)
+                    logger.info(f"バッチ追加成功: {len(batch)} 件 (taskUid={task.get('taskUid')})")
+                else:
+                    logger.error(f"バッチ追加失敗: status={task_status}, error={result.get('error')}")
+
             except Exception as e:
-                logger.error(f"ドキュメント追加エラー: {e}")
+                logger.error(f"ドキュメント追加エラー: {e}", exc_info=True)
                 # エラーが発生しても続行（部分的な成功を許容）
 
-        logger.info(f"ドキュメント追加完了: {total_added} 件")
+        logger.info(f"ドキュメント追加完了: {total_added} 件 / {len(documents)} 件")
         return total_added
 
     async def delete_documents(self, document_ids: List[str]) -> int:
