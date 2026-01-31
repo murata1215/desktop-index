@@ -139,11 +139,28 @@ body {
 }
 
 /* ---------------------------------------------------------------------------
-   トップページ（検索フォーム）
+   トップページ（検索フォーム + 最近のファイル）
 --------------------------------------------------------------------------- */
 .search-page {
     text-align: center;
-    padding-top: 80px;
+    padding-top: 40px;
+}
+
+/* 2カラムレイアウト */
+.search-page-layout {
+    display: grid;
+    grid-template-columns: 1fr 350px;
+    gap: 40px;
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 0 20px;
+    text-align: left;
+}
+
+/* 左側: 検索コンテナ */
+.search-container {
+    text-align: center;
+    padding-top: 40px;
 }
 
 .search-title {
@@ -237,6 +254,178 @@ body {
 .filter-button:hover {
     background-color: var(--bg-hover);
     box-shadow: var(--shadow-sm);
+}
+
+/* ---------------------------------------------------------------------------
+   最近のファイル サイドバー
+--------------------------------------------------------------------------- */
+.recent-files-sidebar {
+    background-color: var(--bg-secondary);
+    border-radius: var(--border-radius);
+    padding: 20px;
+    height: calc(100vh - 160px);
+    display: flex;
+    flex-direction: column;
+    position: sticky;
+    top: 80px;
+}
+
+.recent-files-title {
+    font-size: 16px;
+    font-weight: 500;
+    margin-bottom: 16px;
+    color: var(--text-primary);
+}
+
+/* フィルターボタン */
+.recent-filter-buttons {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 16px;
+    flex-wrap: wrap;
+}
+
+.recent-filter-btn {
+    padding: 6px 14px;
+    background-color: var(--bg-color);
+    color: var(--text-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: 16px;
+    font-size: 12px;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.recent-filter-btn:hover {
+    background-color: var(--bg-hover);
+    border-color: var(--text-secondary);
+}
+
+.recent-filter-btn.active {
+    background-color: var(--primary-color);
+    color: white;
+    border-color: var(--primary-color);
+}
+
+/* ファイル一覧（スクロール可能） */
+.recent-files-list {
+    flex: 1;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding-right: 8px;
+}
+
+/* スクロールバーのスタイル */
+.recent-files-list::-webkit-scrollbar {
+    width: 6px;
+}
+
+.recent-files-list::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.recent-files-list::-webkit-scrollbar-thumb {
+    background-color: var(--border-color);
+    border-radius: 3px;
+}
+
+.recent-files-list::-webkit-scrollbar-thumb:hover {
+    background-color: var(--text-light);
+}
+
+/* ファイルアイテム */
+.recent-file-item {
+    padding: 12px;
+    background-color: var(--bg-color);
+    border: 1px solid transparent;
+    border-radius: var(--border-radius);
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.recent-file-item:hover {
+    border-color: var(--border-color);
+    box-shadow: var(--shadow-sm);
+    transform: translateY(-1px);
+}
+
+.recent-file-header {
+    display: flex;
+    align-items: center;
+    margin-bottom: 6px;
+}
+
+.recent-file-icon {
+    font-size: 16px;
+    margin-right: 8px;
+    flex-shrink: 0;
+}
+
+.recent-file-name {
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text-primary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.recent-file-path {
+    font-size: 11px;
+    color: var(--text-light);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    margin-bottom: 4px;
+}
+
+.recent-file-date {
+    font-size: 11px;
+    color: var(--text-secondary);
+}
+
+/* ローディング表示 */
+.recent-files-loading {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 40px;
+    color: var(--text-secondary);
+}
+
+.loading-spinner {
+    width: 16px;
+    height: 16px;
+    border: 2px solid var(--border-color);
+    border-top-color: var(--primary-color);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+    to { transform: rotate(360deg); }
+}
+
+/* エラー・空表示 */
+.recent-files-error,
+.recent-files-empty {
+    text-align: center;
+    padding: 40px 20px;
+    color: var(--text-secondary);
+    font-size: 13px;
+}
+
+/* 件数表示 */
+.recent-files-count {
+    font-size: 11px;
+    color: var(--text-light);
+    text-align: center;
+    padding-top: 12px;
+    border-top: 1px solid var(--border-color);
+    margin-top: 8px;
 }
 
 /* ---------------------------------------------------------------------------
@@ -625,6 +814,25 @@ body {
 /* ---------------------------------------------------------------------------
    レスポンシブ対応
 --------------------------------------------------------------------------- */
+
+/* タブレット: 2カラム → 1カラム（縦積み） */
+@media (max-width: 900px) {
+    .search-page-layout {
+        grid-template-columns: 1fr;
+        gap: 24px;
+    }
+
+    .search-container {
+        padding-top: 20px;
+    }
+
+    .recent-files-sidebar {
+        height: auto;
+        max-height: 400px;
+        position: static;
+    }
+}
+
 @media (max-width: 600px) {
     .search-title {
         font-size: 32px;
@@ -666,5 +874,16 @@ body {
 
     .control-buttons {
         flex-direction: column;
+    }
+
+    /* モバイル: フィルターボタンを横スクロール */
+    .recent-filter-buttons {
+        flex-wrap: nowrap;
+        overflow-x: auto;
+        padding-bottom: 8px;
+    }
+
+    .recent-filter-btn {
+        flex-shrink: 0;
     }
 }

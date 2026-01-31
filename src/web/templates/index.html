@@ -1,48 +1,79 @@
 {% extends "base.html" %}
 <!--
 =============================================================================
-Desktop Index - トップページ（検索フォーム）
+Desktop Index - トップページ（検索フォーム + 最近のファイル）
 =============================================================================
 検索キーワードを入力するメインページです。
-シンプルな検索ボックスを中央に配置し、Google風のUIを提供します。
+左側にシンプルな検索ボックス、右側に最近更新されたファイルの一覧を表示します。
 =============================================================================
 -->
 
 {% block content %}
 <div class="search-page">
-    <!-- メインタイトル -->
-    <h1 class="search-title">
-        <span class="title-icon">🔍</span>
-        Desktop Index
-    </h1>
-    <p class="search-subtitle">ローカルファイルを高速検索</p>
+    <div class="search-page-layout">
+        <!-- 左側: 検索エリア -->
+        <div class="search-container">
+            <!-- メインタイトル -->
+            <h1 class="search-title">
+                <span class="title-icon">🔍</span>
+                Desktop Index
+            </h1>
+            <p class="search-subtitle">ローカルファイルを高速検索</p>
 
-    <!-- 検索フォーム -->
-    <form action="/search" method="get" class="search-form-large">
-        <div class="search-input-wrapper">
-            <input
-                type="text"
-                name="q"
-                class="search-input-large"
-                placeholder="検索キーワードを入力..."
-                autofocus
-                autocomplete="off"
-            >
-            <button type="submit" class="search-button-large">
-                検索
-            </button>
-        </div>
-    </form>
+            <!-- 検索フォーム -->
+            <form action="/search" method="get" class="search-form-large">
+                <div class="search-input-wrapper">
+                    <input
+                        type="text"
+                        name="q"
+                        class="search-input-large"
+                        placeholder="検索キーワードを入力..."
+                        autofocus
+                        autocomplete="off"
+                    >
+                    <button type="submit" class="search-button-large">
+                        検索
+                    </button>
+                </div>
+            </form>
 
-    <!-- クイックリンク -->
-    <div class="quick-links">
-        <h3>フィルター検索</h3>
-        <div class="filter-buttons">
-            <a href="/search?q=&extension=.pdf" class="filter-button">📄 PDF</a>
-            <a href="/search?q=&extension=.docx" class="filter-button">📝 Word</a>
-            <a href="/search?q=&extension=.xlsx" class="filter-button">📊 Excel</a>
-            <a href="/search?q=&extension=.txt" class="filter-button">📃 テキスト</a>
+            <!-- クイックリンク -->
+            <div class="quick-links">
+                <h3>フィルター検索</h3>
+                <div class="filter-buttons">
+                    <a href="/search?q=&extension=.pdf" class="filter-button">📄 PDF</a>
+                    <a href="/search?q=&extension=.docx" class="filter-button">📝 Word</a>
+                    <a href="/search?q=&extension=.xlsx" class="filter-button">📊 Excel</a>
+                    <a href="/search?q=&extension=.txt" class="filter-button">📃 テキスト</a>
+                </div>
+            </div>
         </div>
+
+        <!-- 右側: 最近のファイル -->
+        <aside class="recent-files-sidebar">
+            <h2 class="recent-files-title">📂 最近のファイル</h2>
+
+            <!-- フィルターボタン -->
+            <div class="recent-filter-buttons">
+                <button class="recent-filter-btn active" data-filter="all">すべて</button>
+                <button class="recent-filter-btn" data-filter="pdf">PDF</button>
+                <button class="recent-filter-btn" data-filter="word">Word</button>
+                <button class="recent-filter-btn" data-filter="excel">Excel</button>
+            </div>
+
+            <!-- ファイル一覧（スクロール可能） -->
+            <div class="recent-files-list" id="recentFilesList">
+                <!-- JavaScriptで動的に挿入 -->
+                <div class="recent-files-loading">
+                    <span class="loading-spinner"></span>
+                    読み込み中...
+                </div>
+            </div>
+        </aside>
     </div>
 </div>
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/recent.js"></script>
 {% endblock %}

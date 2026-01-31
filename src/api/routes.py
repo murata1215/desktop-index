@@ -5,14 +5,19 @@
 #
 # エンドポイント:
 #   GET  /api/search         - 全文検索
+#   GET  /api/recent         - 最近のファイル取得
 #   GET  /api/stats          - 統計情報取得
 #   POST /api/crawl/start    - クロール開始
 #   POST /api/crawl/stop     - クロール停止
 #   GET  /api/crawl/status   - クロール状態取得
 #   POST /api/index/clear    - インデックスクリア
+#   POST /api/open-folder    - フォルダを開く
 # =============================================================================
 
 import logging
+import subprocess
+import os
+from datetime import datetime, timedelta
 from typing import Optional, List
 from fastapi import APIRouter, Query, HTTPException
 from pydantic import BaseModel
@@ -88,6 +93,32 @@ class MessageResponse(BaseModel):
     message: str
 
 
+class RecentFilesResponse(BaseModel):
+    """
+    最近のファイル一覧のレスポンスモデル
+
+    Attributes:
+        hits: 最近更新されたファイルのリスト
+        total_hits: 総件数
+        days: 対象期間（日数）
+        extension_filter: 拡張子フィルター（適用されている場合）
+    """
+    hits: List[dict]
+    total_hits: int
+    days: int
+    extension_filter: Optional[str]
+
+
+class OpenFolderRequest(BaseModel):
+    """
+    フォルダを開くリクエストモデル
+
+    Attributes:
+        path: 開きたいファイルのフルパス
+    """
+    path: str
+
+
 # ---------------------------------------------------------------------------
 # 検索 API
 # ---------------------------------------------------------------------------
@@ -153,6 +184,129 @@ async def search(
         processing_time_ms=results.get("processingTimeMs", 0),
         query=q
     )
+
+
+# ---------------------------------------------------------------------------
+# 最近のファイル API
+# ---------------------------------------------------------------------------
+@router.get("/recent", response_model=RecentFilesResponse)
+async def get_recent_files(
+    days: int = Query(7, ge=1, le=30, description="取得する期間（日数）"),
+    extension: Optional[str] = Query(None, description="拡張子フィルター（例: pdf, docx, xlsx）")
+):
+    """
+    最近更新されたファイルを取得する
+
+    指定された期間内に更新されたファイルを、更新日時の新しい順で返します。
+    Office系ファイル（PDF, Word, Excel, PowerPoint）に限定して取得します。
+
+    Args:
+        days: 対象期間（日数）（1-30、デフォルト: 7）
+        extension: 特定の拡張子でフィルター（例: "pdf", "docx"）
+                   未指定の場合はOffice系ファイル全て
+
+    Returns:
+        RecentFilesResponse: 最近のファイル一覧
+
+    Example:
+        GET /api/recent?days=7&extension=pdf
+    """
+    from src.main import meilisearch_client
+
+    if not meilisearch_client:
+        raise HTTPException(status_code=503, detail="検索サービスが利用できません")
+
+    # Office系ファイルの拡張子リスト
+    office_extensions = [".pdf", ".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx"]
+
+    # 対象期間の開始日時を計算
+    # ISO 8601 形式で指定（Meilisearchで文字列比較可能）
+    cutoff_date = datetime.now() - timedelta(days=days)
+    cutoff_str = cutoff_date.strftime("%Y-%m-%dT%H:%M:%S")
+
+    # フィルター条件の構築
+    # 1. 更新日時が期間内
+    # 2. 拡張子がOffice系（または特定の拡張子）
+    if extension:
+        # 特定の拡張子でフィルター
+        ext = extension if extension.startswith(".") else f".{extension}"
+        extension_filter = f"extension = '{ext}'"
+    else:
+        # Office系ファイル全て
+        ext_conditions = " OR ".join([f"extension = '{ext}'" for ext in office_extensions])
+        extension_filter = f"({ext_conditions})"
+
+    # 日時フィルターと拡張子フィルターを組み合わせ
+    filters = f"modified_at >= '{cutoff_str}' AND {extension_filter}"
+
+    # 検索を実行（空クエリで全件取得、更新日時でソート）
+    results = await meilisearch_client.search(
+        query="",  # 空クエリで全件対象
+        limit=1000,  # 1週間分なので十分な件数
+        offset=0,
+        filters=filters,
+        sort=["modified_at:desc"]  # 更新日時の降順
+    )
+
+    return RecentFilesResponse(
+        hits=results.get("hits", []),
+        total_hits=results.get("estimatedTotalHits", 0),
+        days=days,
+        extension_filter=extension
+    )
+
+
+# ---------------------------------------------------------------------------
+# フォルダを開く API
+# ---------------------------------------------------------------------------
+@router.post("/open-folder", response_model=MessageResponse)
+async def open_folder(request: OpenFolderRequest):
+    """
+    ファイルの親フォルダをエクスプローラーで開く
+
+    指定されたファイルのパスから親フォルダを取得し、
+    Windowsエクスプローラーでそのファイルを選択した状態で開きます。
+
+    Args:
+        request: ファイルパスを含むリクエスト
+
+    Returns:
+        MessageResponse: 実行結果
+
+    Note:
+        セキュリティ: パスはバリデーションされ、
+        インデックス済みのパスのみ許可されます。
+    """
+    path = request.path
+
+    # パスのバリデーション
+    if not path or not isinstance(path, str):
+        raise HTTPException(status_code=400, detail="無効なパスです")
+
+    # パスの正規化（セキュリティ対策）
+    normalized_path = os.path.normpath(path)
+
+    # パストラバーサル攻撃の防止
+    if ".." in normalized_path:
+        raise HTTPException(status_code=400, detail="不正なパスです")
+
+    # ファイルが存在するか確認
+    if not os.path.exists(normalized_path):
+        raise HTTPException(status_code=404, detail="ファイルが見つかりません")
+
+    try:
+        # Windows: explorer /select,"ファイルパス" でファイルを選択した状態で開く
+        subprocess.Popen(
+            ['explorer', '/select,', normalized_path],
+            shell=False
+        )
+        return MessageResponse(
+            success=True,
+            message=f"フォルダを開きました: {os.path.dirname(normalized_path)}"
+        )
+    except Exception as e:
+        logger.error(f"フォルダを開くエラー: {e}")
+        raise HTTPException(status_code=500, detail=f"フォルダを開けませんでした: {str(e)}")
 
 
 # ---------------------------------------------------------------------------
