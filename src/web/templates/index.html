@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+<!--
+=============================================================================
+Desktop Index - トップページ（検索フォーム）
+=============================================================================
+検索キーワードを入力するメインページです。
+シンプルな検索ボックスを中央に配置し、Google風のUIを提供します。
+=============================================================================
+-->
+
+{% block content %}
+<div class="search-page">
+    <!-- メインタイトル -->
+    <h1 class="search-title">
+        <span class="title-icon">🔍</span>
+        Desktop Index
+    </h1>
+    <p class="search-subtitle">ローカルファイルを高速検索</p>
+
+    <!-- 検索フォーム -->
+    <form action="/search" method="get" class="search-form-large">
+        <div class="search-input-wrapper">
+            <input
+                type="text"
+                name="q"
+                class="search-input-large"
+                placeholder="検索キーワードを入力..."
+                autofocus
+                autocomplete="off"
+            >
+            <button type="submit" class="search-button-large">
+                検索
+            </button>
+        </div>
+    </form>
+
+    <!-- クイックリンク -->
+    <div class="quick-links">
+        <h3>フィルター検索</h3>
+        <div class="filter-buttons">
+            <a href="/search?q=&extension=.pdf" class="filter-button">📄 PDF</a>
+            <a href="/search?q=&extension=.docx" class="filter-button">📝 Word</a>
+            <a href="/search?q=&extension=.xlsx" class="filter-button">📊 Excel</a>
+            <a href="/search?q=&extension=.txt" class="filter-button">📃 テキスト</a>
+        </div>
+    </div>
+</div>
+{% endblock %}

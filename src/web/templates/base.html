@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="ja">
+<!--
+=============================================================================
+Desktop Index - ベーステンプレート
+=============================================================================
+全ページで共通のレイアウト（ヘッダー、フッター、ナビゲーション）を定義します。
+他のテンプレートはこのファイルを継承して使用します。
+=============================================================================
+-->
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ title }} - Desktop Index</title>
+
+    <!-- スタイルシート -->
+    <link rel="stylesheet" href="/static/style.css">
+
+    <!-- ファビコン（検索アイコン） -->
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🔍</text></svg>">
+</head>
+<body>
+    <!-- ヘッダー -->
+    <header class="header">
+        <div class="container">
+            <a href="/" class="logo">
+                <span class="logo-icon">🔍</span>
+                <span class="logo-text">Desktop Index</span>
+            </a>
+            <nav class="nav">
+                <a href="/" class="nav-link">検索</a>
+                <a href="/status" class="nav-link">ステータス</a>
+            </nav>
+        </div>
+    </header>
+
+    <!-- メインコンテンツ -->
+    <main class="main">
+        <div class="container">
+            {% block content %}{% endblock %}
+        </div>
+    </main>
+
+    <!-- フッター -->
+    <footer class="footer">
+        <div class="container">
+            <p>Desktop Index - ローカルファイル検索システム</p>
+        </div>
+    </footer>
+
+    <!-- JavaScript -->
+    <script src="/static/app.js"></script>
+    {% block scripts %}{% endblock %}
+</body>
+</html>

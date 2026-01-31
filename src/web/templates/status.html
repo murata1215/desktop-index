@@ -1,0 +1,172 @@
+{% extends "base.html" %}
+<!--
+=============================================================================
+Desktop Index - ステータスページ
+=============================================================================
+システムの状態、インデックス統計、クローラー状態を表示するページです。
+管理者向けの情報と操作ボタンを提供します。
+=============================================================================
+-->
+
+{% block content %}
+<div class="status-page">
+    <h1 class="page-title">システムステータス</h1>
+
+    <!-- インデックス統計 -->
+    <section class="status-section">
+        <h2 class="section-title">📊 インデックス統計</h2>
+        <div class="stats-grid">
+            <div class="stat-card">
+                <div class="stat-value">{{ index_stats.numberOfDocuments | default(0) }}</div>
+                <div class="stat-label">インデックス済みファイル</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value">{{ '処理中' if index_stats.isIndexing else '待機中' }}</div>
+                <div class="stat-label">インデックス状態</div>
+            </div>
+        </div>
+    </section>
+
+    <!-- クローラー状態 -->
+    <section class="status-section">
+        <h2 class="section-title">🕷️ クローラー状態</h2>
+        <div class="status-info">
+            <div class="info-row">
+                <span class="info-label">実行状態:</span>
+                <span class="info-value status-badge {% if scheduler_status.is_running %}running{% else %}stopped{% endif %}">
+                    {{ '実行中' if scheduler_status.is_running else '停止中' }}
+                </span>
+            </div>
+            <div class="info-row">
+                <span class="info-label">最終実行:</span>
+                <span class="info-value">{{ scheduler_status.last_run or '未実行' }}</span>
+            </div>
+            <div class="info-row">
+                <span class="info-label">次回実行:</span>
+                <span class="info-value">{{ scheduler_status.next_run or '未スケジュール' }}</span>
+            </div>
+            <div class="info-row">
+                <span class="info-label">処理済みファイル:</span>
+                <span class="info-value">{{ scheduler_status.files_processed | default(0) }} 件</span>
+            </div>
+            {% if scheduler_status.current_path %}
+            <div class="info-row">
+                <span class="info-label">現在処理中:</span>
+                <span class="info-value path">{{ scheduler_status.current_path }}</span>
+            </div>
+            {% endif %}
+        </div>
+
+        <!-- クローラー制御ボタン -->
+        <div class="control-buttons">
+            <button id="startCrawlBtn" class="btn btn-primary" onclick="startCrawl()">
+                ▶️ クロール開始
+            </button>
+            <button id="stopCrawlBtn" class="btn btn-secondary" onclick="stopCrawl()">
+                ⏹️ クロール停止
+            </button>
+        </div>
+    </section>
+
+    <!-- 設定情報 -->
+    <section class="status-section">
+        <h2 class="section-title">⚙️ 設定</h2>
+        <div class="status-info">
+            <div class="info-row">
+                <span class="info-label">スキャン対象:</span>
+                <span class="info-value">
+                    <ul class="path-list">
+                        {% for path in settings.scan_paths %}
+                        <li>{{ path }}</li>
+                        {% endfor %}
+                    </ul>
+                </span>
+            </div>
+            <div class="info-row">
+                <span class="info-label">スキャン間隔:</span>
+                <span class="info-value">{{ settings.scan_interval_minutes }} 分</span>
+            </div>
+            <div class="info-row">
+                <span class="info-label">対象拡張子:</span>
+                <span class="info-value">
+                    {% for ext in settings.supported_extensions %}
+                    <span class="extension-badge">{{ ext }}</span>
+                    {% endfor %}
+                    ...
+                </span>
+            </div>
+        </div>
+    </section>
+
+    <!-- 危険な操作 -->
+    <section class="status-section danger-zone">
+        <h2 class="section-title">⚠️ 危険な操作</h2>
+        <p class="warning-text">以下の操作は取り消すことができません。</p>
+        <button id="clearIndexBtn" class="btn btn-danger" onclick="clearIndex()">
+            🗑️ インデックスをクリア
+        </button>
+    </section>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+/**
+ * クロールを手動で開始する
+ */
+async function startCrawl() {
+    if (!confirm('クロールを開始しますか？')) return;
+
+    try {
+        const response = await fetch('/api/crawl/start', { method: 'POST' });
+        const data = await response.json();
+        alert(data.message);
+        location.reload();
+    } catch (error) {
+        alert('エラーが発生しました: ' + error.message);
+    }
+}
+
+/**
+ * 実行中のクロールを停止する
+ */
+async function stopCrawl() {
+    if (!confirm('クロールを停止しますか？')) return;
+
+    try {
+        const response = await fetch('/api/crawl/stop', { method: 'POST' });
+        const data = await response.json();
+        alert(data.message);
+        location.reload();
+    } catch (error) {
+        alert('エラーが発生しました: ' + error.message);
+    }
+}
+
+/**
+ * インデックスを完全にクリアする
+ */
+async function clearIndex() {
+    if (!confirm('本当にインデックスをクリアしますか？\nこの操作は取り消せません。')) return;
+    if (!confirm('再度確認: 全てのインデックスデータが削除されます。よろしいですか？')) return;
+
+    try {
+        const response = await fetch('/api/index/clear', { method: 'POST' });
+        const data = await response.json();
+        alert(data.message);
+        location.reload();
+    } catch (error) {
+        alert('エラーが発生しました: ' + error.message);
+    }
+}
+
+// ページを定期的に更新（クロール中の状態を反映）
+setInterval(() => {
+    // クロール中の場合のみ自動更新
+    const isRunning = document.querySelector('.status-badge.running');
+    if (isRunning) {
+        location.reload();
+    }
+}, 30000);  // 30秒ごと
+</script>
+{% endblock %}

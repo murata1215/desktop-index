@@ -1,0 +1,93 @@
+# =============================================================================
+# Desktop Index - Docker Compose 設定ファイル
+# =============================================================================
+# このファイルは、ファイルインデックスシステムの全サービスを定義します。
+#
+# サービス構成:
+#   - meilisearch: 全文検索エンジン（ポート7700）
+#   - app: Python FastAPIアプリケーション（ポート8000）
+#
+# 使用方法:
+#   起動: docker-compose up -d
+#   停止: docker-compose down
+#   ログ確認: docker-compose logs -f
+# =============================================================================
+
+version: '3.8'
+
+services:
+  # ---------------------------------------------------------------------------
+  # Meilisearch - 高速な全文検索エンジン
+  # ---------------------------------------------------------------------------
+  # 日本語対応済み、タイポ耐性あり、REST APIで操作可能
+  # データは ./data/meilisearch に永続化される
+  # ---------------------------------------------------------------------------
+  meilisearch:
+    image: getmeili/meilisearch:v1.6
+    container_name: desktopindex-meilisearch
+    ports:
+      - "7700:7700"
+    volumes:
+      # インデックスデータの永続化
+      - ./data/meilisearch:/meili_data
+    environment:
+      # 開発環境では認証なしで運用（本番環境では MEILI_MASTER_KEY を設定すること）
+      - MEILI_ENV=development
+      # 日本語検索のための設定
+      - MEILI_NO_ANALYTICS=true
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:7700/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # ---------------------------------------------------------------------------
+  # App - Python FastAPI アプリケーション
+  # ---------------------------------------------------------------------------
+  # クローラー、インデクサー、Web UIを提供するメインアプリケーション
+  # ---------------------------------------------------------------------------
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: desktopindex-app
+    ports:
+      - "8000:8000"
+    volumes:
+      # ソースコードのマウント（開発時のホットリロード用）
+      - ./src:/app/src
+      - ./config.yaml:/app/config.yaml
+      # =======================================================================
+      # 【重要】検索対象フォルダのマウント設定
+      # =======================================================================
+      # 以下はサンプルです。実際の環境に合わせて編集してください。
+      # Windows の場合、ドライブレターを使用します。
+      #
+      # 例: Cドライブの Users フォルダをマウント
+      # - C:/Users:/mnt/c_users:ro
+      #
+      # 例: Dドライブ全体をマウント
+      # - D:/:/mnt/d_drive:ro
+      #
+      # 例: ネットワークドライブをマウント（事前にWindowsでマウント済みであること）
+      # - Z:/:/mnt/network_share:ro
+      #
+      # :ro は読み取り専用（read-only）を意味します
+      # =======================================================================
+      - C:/Users:/mnt/c_users:ro
+      - D:/:/mnt/d_drive:ro
+    environment:
+      - MEILISEARCH_HOST=http://meilisearch:7700
+      - PYTHONUNBUFFERED=1
+    depends_on:
+      meilisearch:
+        condition: service_healthy
+    restart: unless-stopped
+
+# =============================================================================
+# ボリューム定義
+# =============================================================================
+volumes:
+  meilisearch_data:
+    driver: local

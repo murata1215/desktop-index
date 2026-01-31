@@ -1,0 +1,33 @@
+# DevRelay関連（プライベート設定）
+.devrelay/
+.devrelay-files/
+.devrelay-output/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.env
+.venv
+env/
+venv/
+ENV/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# データディレクトリの中身（構造は保持）
+data/*
+!data/.gitkeep
+
+# ログ
+*.log

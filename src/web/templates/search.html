@@ -1,0 +1,152 @@
+{% extends "base.html" %}
+<!--
+=============================================================================
+Desktop Index - 検索結果ページ
+=============================================================================
+検索クエリの結果を表示するページです。
+各検索結果にはファイル名、パス、マッチしたテキストのハイライトが表示されます。
+=============================================================================
+-->
+
+{% block content %}
+<div class="search-results-page">
+    <!-- 検索フォーム（コンパクト版） -->
+    <form action="/search" method="get" class="search-form-compact">
+        <input
+            type="text"
+            name="q"
+            class="search-input-compact"
+            value="{{ query }}"
+            placeholder="検索キーワードを入力..."
+            autofocus
+        >
+        <button type="submit" class="search-button-compact">検索</button>
+    </form>
+
+    <!-- 検索結果情報 -->
+    {% if query %}
+    <div class="search-info">
+        <p>
+            「<strong>{{ query }}</strong>」の検索結果:
+            <span class="result-count">{{ total_hits }}</span> 件
+            <span class="processing-time">({{ processing_time_ms }} ms)</span>
+        </p>
+    </div>
+    {% endif %}
+
+    <!-- フィルターバー -->
+    <div class="filter-bar">
+        <span class="filter-label">フィルター:</span>
+        <a href="/search?q={{ query }}" class="filter-chip {% if not request.query_params.get('extension') %}active{% endif %}">すべて</a>
+        <a href="/search?q={{ query }}&extension=.pdf" class="filter-chip {% if request.query_params.get('extension') == '.pdf' %}active{% endif %}">PDF</a>
+        <a href="/search?q={{ query }}&extension=.docx" class="filter-chip {% if request.query_params.get('extension') == '.docx' %}active{% endif %}">Word</a>
+        <a href="/search?q={{ query }}&extension=.xlsx" class="filter-chip {% if request.query_params.get('extension') == '.xlsx' %}active{% endif %}">Excel</a>
+        <a href="/search?q={{ query }}&extension=.txt" class="filter-chip {% if request.query_params.get('extension') == '.txt' %}active{% endif %}">テキスト</a>
+    </div>
+
+    <!-- 検索結果リスト -->
+    <div class="results-list">
+        {% if results %}
+            {% for result in results %}
+            <div class="result-item">
+                <!-- ファイルアイコンと名前 -->
+                <div class="result-header">
+                    <span class="file-icon">{{ get_file_icon(result.extension) }}</span>
+                    <a href="#" class="result-title" onclick="openFile('{{ result.path }}'); return false;">
+                        {% if result._formatted and result._formatted.filename %}
+                            {{ result._formatted.filename | safe }}
+                        {% else %}
+                            {{ result.filename }}
+                        {% endif %}
+                    </a>
+                </div>
+
+                <!-- ファイルパス -->
+                <div class="result-path">
+                    <span class="path-text">{{ result.path }}</span>
+                    <button class="copy-button" onclick="copyToClipboard('{{ result.path }}')" title="パスをコピー">
+                        📋
+                    </button>
+                </div>
+
+                <!-- メタ情報 -->
+                <div class="result-meta">
+                    <span class="meta-item">
+                        <span class="meta-icon">📅</span>
+                        {{ result.modified_at[:10] if result.modified_at else '不明' }}
+                    </span>
+                    <span class="meta-item">
+                        <span class="meta-icon">📦</span>
+                        {{ format_file_size(result.size) }}
+                    </span>
+                    <span class="meta-item">
+                        <span class="meta-icon">📄</span>
+                        {{ result.extension }}
+                    </span>
+                </div>
+
+                <!-- コンテンツプレビュー（ハイライト付き） -->
+                {% if result._formatted and result._formatted.content %}
+                <div class="result-preview">
+                    {{ result._formatted.content | safe }}
+                </div>
+                {% endif %}
+            </div>
+            {% endfor %}
+        {% else %}
+            {% if query %}
+            <div class="no-results">
+                <p class="no-results-icon">🔍</p>
+                <p class="no-results-text">「{{ query }}」に一致する結果が見つかりませんでした</p>
+                <p class="no-results-hint">別のキーワードで検索してみてください</p>
+            </div>
+            {% else %}
+            <div class="no-results">
+                <p class="no-results-icon">💡</p>
+                <p class="no-results-text">検索キーワードを入力してください</p>
+            </div>
+            {% endif %}
+        {% endif %}
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+/**
+ * ファイルを開く（Windows用のパスをクリップボードにコピー）
+ * Docker内から直接ファイルを開けないため、パスをコピーする動作に変更
+ *
+ * @param {string} path - ファイルパス
+ */
+function openFile(path) {
+    // Docker内のパスをWindowsパスに変換
+    // /mnt/c_users → C:/Users
+    // /mnt/d_drive → D:/
+    let windowsPath = path;
+    if (path.startsWith('/mnt/c_users')) {
+        windowsPath = path.replace('/mnt/c_users', 'C:/Users');
+    } else if (path.startsWith('/mnt/d_drive')) {
+        windowsPath = path.replace('/mnt/d_drive', 'D:');
+    }
+    // バックスラッシュに変換
+    windowsPath = windowsPath.replace(/\//g, '\\');
+
+    copyToClipboard(windowsPath);
+    alert('ファイルパスをクリップボードにコピーしました:\n' + windowsPath);
+}
+
+/**
+ * テキストをクリップボードにコピーする
+ *
+ * @param {string} text - コピーするテキスト
+ */
+function copyToClipboard(text) {
+    navigator.clipboard.writeText(text).then(() => {
+        console.log('コピーしました:', text);
+    }).catch(err => {
+        console.error('コピーに失敗:', err);
+    });
+}
+</script>
+{% endblock %}

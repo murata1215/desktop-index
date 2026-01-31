@@ -1,0 +1,384 @@
+# =============================================================================
+# Desktop Index - Meilisearch クライアント
+# =============================================================================
+# Meilisearch との通信を行うクライアントクラスを提供します。
+#
+# 主な機能:
+#   - インデックスの作成・設定
+#   - ドキュメントの追加・更新・削除
+#   - 全文検索
+#   - 統計情報の取得
+# =============================================================================
+
+import logging
+from typing import List, Dict, Optional, Any
+import meilisearch
+from meilisearch.errors import MeilisearchApiError
+
+logger = logging.getLogger(__name__)
+
+
+class MeilisearchClient:
+    """
+    Meilisearch との通信を行うクライアントクラス
+
+    このクラスは Meilisearch API のラッパーとして機能し、
+    以下の操作を提供します:
+    - インデックスの初期化と設定
+    - ドキュメントのバッチ追加
+    - 全文検索
+    - ドキュメントの削除
+
+    使用例:
+        client = MeilisearchClient(
+            host="http://localhost:7700",
+            index_name="files"
+        )
+        await client.initialize_index()
+        await client.add_documents([{...}, {...}])
+        results = await client.search("検索キーワード")
+
+    Attributes:
+        host: Meilisearch サーバーの URL
+        api_key: 認証用 API キー（オプション）
+        index_name: 使用するインデックス名
+    """
+
+    def __init__(
+        self,
+        host: str = "http://localhost:7700",
+        api_key: Optional[str] = None,
+        index_name: str = "files"
+    ):
+        """
+        MeilisearchClient を初期化する
+
+        Args:
+            host: Meilisearch サーバーの URL
+            api_key: 認証用 API キー（本番環境では必須）
+            index_name: 使用するインデックス名
+        """
+        self.host = host
+        self.api_key = api_key
+        self.index_name = index_name
+
+        # Meilisearch クライアントの初期化
+        self.client = meilisearch.Client(host, api_key)
+        self.index = self.client.index(index_name)
+
+    async def initialize_index(self) -> None:
+        """
+        インデックスを初期化する
+
+        インデックスが存在しない場合は作成し、
+        検索設定（検索可能属性、フィルター可能属性等）を適用します。
+
+        この関数はアプリケーション起動時に一度だけ呼び出されます。
+        """
+        try:
+            # インデックスの存在確認
+            try:
+                self.client.get_index(self.index_name)
+                logger.info(f"既存のインデックスを使用: {self.index_name}")
+            except MeilisearchApiError as e:
+                if "index_not_found" in str(e):
+                    # インデックスが存在しない場合は作成
+                    logger.info(f"インデックスを作成: {self.index_name}")
+                    task = self.client.create_index(
+                        self.index_name,
+                        {"primaryKey": "id"}
+                    )
+                    self._wait_for_task(task)
+                else:
+                    raise
+
+            # 検索設定の適用
+            await self._configure_index_settings()
+
+        except Exception as e:
+            logger.error(f"インデックス初期化エラー: {e}")
+            raise
+
+    async def _configure_index_settings(self) -> None:
+        """
+        インデックスの検索設定を適用する
+
+        以下の設定を行います:
+        - 検索可能属性（searchableAttributes）: 検索対象となるフィールド
+        - フィルター可能属性（filterableAttributes）: フィルター検索で使用可能なフィールド
+        - ソート可能属性（sortableAttributes）: ソートに使用可能なフィールド
+        - ランキングルール: 検索結果の順序を決定するルール
+        """
+        # 検索可能な属性を設定
+        # filename と content を検索対象にし、path も検索可能にする
+        searchable_attributes = [
+            "filename",
+            "content",
+            "path"
+        ]
+
+        # フィルター可能な属性を設定
+        # 拡張子、更新日時、サイズでフィルタリングできるようにする
+        filterable_attributes = [
+            "extension",
+            "modified_at",
+            "size"
+        ]
+
+        # ソート可能な属性を設定
+        sortable_attributes = [
+            "modified_at",
+            "size",
+            "filename"
+        ]
+
+        # ランキングルールを設定
+        # デフォルトのルールに加え、更新日時を考慮
+        ranking_rules = [
+            "words",          # 検索語の一致数
+            "typo",           # タイポの少なさ
+            "proximity",      # 検索語の近さ
+            "attribute",      # 属性の優先順位
+            "sort",           # ソート指定
+            "exactness",      # 完全一致度
+            "modified_at:desc"  # 新しいファイルを優先
+        ]
+
+        try:
+            # 各設定を適用（非同期で実行）
+            tasks = []
+
+            task = self.index.update_searchable_attributes(searchable_attributes)
+            tasks.append(task)
+
+            task = self.index.update_filterable_attributes(filterable_attributes)
+            tasks.append(task)
+
+            task = self.index.update_sortable_attributes(sortable_attributes)
+            tasks.append(task)
+
+            task = self.index.update_ranking_rules(ranking_rules)
+            tasks.append(task)
+
+            # 全てのタスクが完了するまで待機
+            for task in tasks:
+                self._wait_for_task(task)
+
+            logger.info("インデックス設定を適用しました")
+
+        except Exception as e:
+            logger.warning(f"インデックス設定の適用に失敗: {e}")
+
+    def _wait_for_task(self, task_info: Dict, timeout_ms: int = 60000) -> Dict:
+        """
+        Meilisearch タスクの完了を待機する
+
+        Meilisearch の操作は非同期で実行されるため、
+        タスクの完了を待機する必要があります。
+
+        Args:
+            task_info: タスク情報（task_uid を含む辞書）
+            timeout_ms: タイムアウト時間（ミリ秒）
+
+        Returns:
+            dict: 完了したタスクの情報
+
+        Raises:
+            Exception: タスクが失敗した場合
+        """
+        task_uid = task_info.get("taskUid") or task_info.get("uid")
+        if task_uid is None:
+            return task_info
+
+        try:
+            result = self.client.wait_for_task(task_uid, timeout_ms)
+            if result.get("status") == "failed":
+                logger.error(f"タスク失敗: {result.get('error')}")
+            return result
+        except Exception as e:
+            logger.warning(f"タスク待機エラー: {e}")
+            return task_info
+
+    async def add_documents(
+        self,
+        documents: List[Dict],
+        batch_size: int = 1000
+    ) -> int:
+        """
+        ドキュメントをインデックスに追加する
+
+        大量のドキュメントを効率的に追加するため、
+        バッチ処理を行います。
+
+        Args:
+            documents: 追加するドキュメントのリスト
+                      各ドキュメントは id, path, filename, content 等を含む辞書
+            batch_size: 1回のAPIコールで送信するドキュメント数
+
+        Returns:
+            int: 追加されたドキュメント数
+        """
+        if not documents:
+            return 0
+
+        total_added = 0
+
+        # バッチに分割して処理
+        for i in range(0, len(documents), batch_size):
+            batch = documents[i:i + batch_size]
+
+            try:
+                task = self.index.add_documents(batch)
+                self._wait_for_task(task)
+                total_added += len(batch)
+                logger.debug(f"バッチ追加完了: {len(batch)} 件")
+            except Exception as e:
+                logger.error(f"ドキュメント追加エラー: {e}")
+                # エラーが発生しても続行（部分的な成功を許容）
+
+        logger.info(f"ドキュメント追加完了: {total_added} 件")
+        return total_added
+
+    async def delete_documents(self, document_ids: List[str]) -> int:
+        """
+        ドキュメントをインデックスから削除する
+
+        Args:
+            document_ids: 削除するドキュメントのIDリスト
+
+        Returns:
+            int: 削除されたドキュメント数
+        """
+        if not document_ids:
+            return 0
+
+        try:
+            task = self.index.delete_documents(document_ids)
+            self._wait_for_task(task)
+            logger.info(f"ドキュメント削除完了: {len(document_ids)} 件")
+            return len(document_ids)
+        except Exception as e:
+            logger.error(f"ドキュメント削除エラー: {e}")
+            return 0
+
+    async def search(
+        self,
+        query: str,
+        limit: int = 20,
+        offset: int = 0,
+        filters: Optional[str] = None,
+        sort: Optional[List[str]] = None,
+        attributes_to_highlight: Optional[List[str]] = None
+    ) -> Dict[str, Any]:
+        """
+        インデックスを検索する
+
+        全文検索を実行し、マッチしたドキュメントを返します。
+        フィルター、ソート、ハイライト等のオプションが使用可能です。
+
+        Args:
+            query: 検索クエリ文字列
+            limit: 返す結果の最大数（デフォルト: 20）
+            offset: スキップする結果数（ページネーション用）
+            filters: フィルター条件（例: "extension = '.pdf'"）
+            sort: ソート条件のリスト（例: ["modified_at:desc"]）
+            attributes_to_highlight: ハイライト対象の属性リスト
+
+        Returns:
+            dict: 検索結果を含む辞書
+                - hits: マッチしたドキュメントのリスト
+                - estimatedTotalHits: 推定総件数
+                - processingTimeMs: 処理時間（ミリ秒）
+
+        Example:
+            results = await client.search(
+                "議事録",
+                filters="extension = '.docx'",
+                sort=["modified_at:desc"],
+                attributes_to_highlight=["filename", "content"]
+            )
+        """
+        search_params = {
+            "limit": limit,
+            "offset": offset
+        }
+
+        if filters:
+            search_params["filter"] = filters
+
+        if sort:
+            search_params["sort"] = sort
+
+        if attributes_to_highlight:
+            search_params["attributesToHighlight"] = attributes_to_highlight
+            # ハイライトタグの設定
+            search_params["highlightPreTag"] = "<mark>"
+            search_params["highlightPostTag"] = "</mark>"
+            # クロップ設定（長いテキストを適切な長さに切り詰め）
+            search_params["attributesToCrop"] = ["content"]
+            search_params["cropLength"] = 200
+
+        try:
+            results = self.index.search(query, search_params)
+            return results
+        except Exception as e:
+            logger.error(f"検索エラー: {e}")
+            return {
+                "hits": [],
+                "estimatedTotalHits": 0,
+                "processingTimeMs": 0,
+                "error": str(e)
+            }
+
+    async def get_stats(self) -> Dict[str, Any]:
+        """
+        インデックスの統計情報を取得する
+
+        Returns:
+            dict: 統計情報を含む辞書
+                - numberOfDocuments: ドキュメント総数
+                - isIndexing: インデックス処理中かどうか
+                - fieldDistribution: フィールドごとのドキュメント数
+        """
+        try:
+            stats = self.index.get_stats()
+            return stats
+        except Exception as e:
+            logger.error(f"統計情報取得エラー: {e}")
+            return {
+                "numberOfDocuments": 0,
+                "isIndexing": False,
+                "error": str(e)
+            }
+
+    async def clear_index(self) -> bool:
+        """
+        インデックス内の全ドキュメントを削除する
+
+        注意: この操作は元に戻せません。
+
+        Returns:
+            bool: 成功した場合は True
+        """
+        try:
+            task = self.index.delete_all_documents()
+            self._wait_for_task(task)
+            logger.info("インデックスをクリアしました")
+            return True
+        except Exception as e:
+            logger.error(f"インデックスクリアエラー: {e}")
+            return False
+
+    async def health_check(self) -> bool:
+        """
+        Meilisearch サーバーの健全性をチェックする
+
+        Returns:
+            bool: サーバーが正常に動作している場合は True
+        """
+        try:
+            health = self.client.health()
+            return health.get("status") == "available"
+        except Exception as e:
+            logger.error(f"ヘルスチェック失敗: {e}")
+            return False
