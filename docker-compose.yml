@@ -23,7 +23,7 @@ services:
   # データは ./data/meilisearch に永続化される
   # ---------------------------------------------------------------------------
   meilisearch:
-    image: getmeili/meilisearch:v1.6
+    image: getmeili/meilisearch:v1.10
     container_name: desktopindex-meilisearch
     ports:
       - "7700:7700"

@@ -164,6 +164,7 @@ class MeilisearchClient:
         - フィルター可能属性（filterableAttributes）: フィルター検索で使用可能なフィールド
         - ソート可能属性（sortableAttributes）: ソートに使用可能なフィールド
         - ランキングルール: 検索結果の順序を決定するルール
+        - ローカライズ属性（localizedAttributes）: 日本語トークナイザーの適用
         """
         # 検索可能な属性を設定
         # filename と content を検索対象にし、path も検索可能にする
@@ -200,6 +201,17 @@ class MeilisearchClient:
             "modified_at:desc"  # 新しいファイルを優先
         ]
 
+        # ローカライズ属性を設定（日本語トークナイザー）
+        # Meilisearch v1.10 以降で利用可能
+        # これにより「田口」で検索すると「田口」を含むドキュメントのみがヒットする
+        # （「田」や「口」だけでマッチしなくなる）
+        localized_attributes = [
+            {
+                "locales": ["jpn"],  # 日本語トークナイザーを適用
+                "attributePatterns": ["filename", "content", "path"]
+            }
+        ]
+
         try:
             # 各設定を適用（非同期で実行）
             tasks = []
@@ -215,6 +227,19 @@ class MeilisearchClient:
 
             task = self.index.update_ranking_rules(ranking_rules)
             tasks.append(task)
+
+            # 日本語トークナイザーの設定を適用
+            # Meilisearch v1.10 以降で利用可能
+            try:
+                task = self.index.update_localized_attributes(localized_attributes)
+                tasks.append(task)
+                logger.info("日本語トークナイザー設定を追加しました")
+            except AttributeError:
+                # 古いバージョンの meilisearch-python では update_localized_attributes が存在しない
+                logger.warning("日本語トークナイザー設定はサポートされていません（meilisearch-python をアップデートしてください）")
+            except MeilisearchApiError as e:
+                # Meilisearch サーバーが localizedAttributes をサポートしていない場合
+                logger.warning(f"日本語トークナイザー設定に失敗: {e}")
 
             # 全てのタスクが完了するまで待機
             for task in tasks:
