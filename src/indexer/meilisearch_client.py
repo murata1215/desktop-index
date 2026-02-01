@@ -420,9 +420,30 @@ class MeilisearchClient:
         """
         try:
             stats = self.index.get_stats()
-            return stats
+            logger.debug(f"統計情報取得: type={type(stats)}, value={stats}")
+
+            # Meilisearch ライブラリのバージョンによって
+            # 辞書または IndexStats オブジェクトで返されるため、両方に対応
+            if hasattr(stats, 'number_of_documents'):
+                # IndexStats オブジェクト（新しいバージョン）の場合
+                # 属性名は snake_case で定義されている
+                return {
+                    "numberOfDocuments": stats.number_of_documents,
+                    "isIndexing": getattr(stats, 'is_indexing', False),
+                    "fieldDistribution": getattr(stats, 'field_distribution', {})
+                }
+            elif isinstance(stats, dict):
+                # 辞書（古いバージョン）の場合
+                return stats
+            else:
+                # その他の場合は属性からアクセスを試みる（camelCase）
+                return {
+                    "numberOfDocuments": getattr(stats, 'numberOfDocuments', 0),
+                    "isIndexing": getattr(stats, 'isIndexing', False),
+                    "fieldDistribution": getattr(stats, 'fieldDistribution', {})
+                }
         except Exception as e:
-            logger.error(f"統計情報取得エラー: {e}")
+            logger.error(f"統計情報取得エラー: {e}", exc_info=True)
             return {
                 "numberOfDocuments": 0,
                 "isIndexing": False,
