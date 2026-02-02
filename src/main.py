@@ -227,16 +227,17 @@ async def index(request: Request):
 
 
 @app.get("/search")
-async def search_page(request: Request, q: str = ""):
+async def search_page(request: Request, q: str = "", extension: str = None):
     """
     検索結果ページを表示する
 
     クエリパラメータ q が指定されている場合は検索を実行し、
-    結果を表示します。
+    結果を表示します。extension パラメータで拡張子フィルタリングが可能。
 
     Args:
         request: FastAPIリクエストオブジェクト
         q: 検索クエリ文字列
+        extension: 拡張子フィルター（例: ".pdf", ".xlsx"）
 
     Returns:
         TemplateResponse: 検索結果を含むHTMLページ
@@ -246,10 +247,17 @@ async def search_page(request: Request, q: str = ""):
     processing_time_ms = 0
 
     if q:
+        # フィルター条件の構築
+        # extension パラメータが指定されている場合は拡張子でフィルタリング
+        filters = None
+        if extension:
+            filters = f"extension = '{extension}'"
+
         # 検索を実行
         search_result = await meilisearch_client.search(
             query=q,
             limit=50,
+            filters=filters,
             attributes_to_highlight=["filename", "content"]
         )
         results = search_result.get("hits", [])
